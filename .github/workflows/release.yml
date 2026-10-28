@@ -1,0 +1,79 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]          # Tag "v1.2.3" pushen => Release 1.2.3 wird erstellt
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write           # nötig zum Anlegen des Releases
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Version bestimmen
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $v = $env:GITHUB_REF_NAME.TrimStart('v')
+          } else {
+            $v = "0.0.0-ci.$env:GITHUB_RUN_NUMBER"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $v"
+
+      - name: Publish (benötigt installierte .NET 10 Runtime)
+        run: >
+          dotnet publish PrintRelay.csproj -c Release -r win-x64
+          --self-contained false
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:DebugType=None
+          -o out/PrintRelay
+
+      - name: Publish (eigenständig, ohne .NET-Installation)
+        run: >
+          dotnet publish PrintRelay.csproj -c Release -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:DebugType=None
+          -o out/PrintRelay-selfcontained
+
+      - name: ZIP-Archive erstellen
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          Copy-Item README.md, LICENSE out/PrintRelay/
+          Copy-Item README.md, LICENSE out/PrintRelay-selfcontained/
+          Compress-Archive -Path out/PrintRelay/*               -DestinationPath "PrintRelay-$v-win-x64.zip"
+          Compress-Archive -Path out/PrintRelay-selfcontained/* -DestinationPath "PrintRelay-$v-win-x64-selfcontained.zip"
+
+      - name: Build-Artefakte hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrintRelay-${{ steps.version.outputs.version }}
+          path: '*.zip'
+
+      - name: GitHub Release erstellen
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $files = Get-ChildItem -Filter *.zip | ForEach-Object { $_.FullName }
+          gh release create $env:GITHUB_REF_NAME @files --title "PrintRelay $env:GITHUB_REF_NAME" --generate-notes
