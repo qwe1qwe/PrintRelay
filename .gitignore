@@ -1,0 +1,24 @@
+# Build-Ausgaben
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+publish/
+*.nupkg
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Laufzeitdaten von PrintRelay (empfangene Druckaufträge und PDFs)
+printjobs/
+
+# Betriebssystem
+Thumbs.db
+Desktop.ini
+.DS_Store
